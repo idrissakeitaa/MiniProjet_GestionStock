@@ -57,6 +57,27 @@ class Commande:
 
 
 # ==============================================================
+# Classe Facture (NOUVELLE)
+# ==============================================================
+
+class Facture:
+    def __init__(self, commande):
+        self.code_cmd = commande.code_cmd
+        self.nom_produit = commande.produit.nom_prod
+        self.quantite = commande.quantite_cmd
+        self.prix_unitaire = commande.produit.prix_unit
+        self.total = commande.calculer_total()
+
+    def afficher(self):
+        print("===== FACTURE =====")
+        print(f"Commande : {self.code_cmd}")
+        print(f"Produit : {self.nom_produit}")
+        print(f"Quantité : {self.quantite}")
+        print(f"Prix unitaire : {self.prix_unitaire} DT")
+        print(f"TOTAL : {self.total} DT")
+
+
+# ==============================================================
 # Classe GestionStock
 # ==============================================================
 
@@ -65,6 +86,7 @@ class GestionStock:
         self.produits = []
         self.commandes = []
         self.historique = []
+        self.factures = []   # 🔥 liste des factures
 
     def ajouter_produit(self, produit):
         for p in self.produits:
@@ -88,7 +110,9 @@ class GestionStock:
     def ajouter_commande(self, commande):
         if commande.valide:
             self.commandes.append(commande)
-            print("✅ Commande enregistrée.")
+            facture = Facture(commande)
+            self.factures.append(facture)
+            print("✅ Commande enregistrée et facture créée.")
         else:
             print("❌ Commande non enregistrée (stock insuffisant).")
 
@@ -112,6 +136,16 @@ class GestionStock:
             print("-----------------")
             cmd.afficher()
 
+    def afficher_factures(self):
+        if not self.factures:
+            print("Aucune facture disponible.")
+            return
+
+        print("=== LISTE DES FACTURES ===")
+        for f in self.factures:
+            print("-----------------")
+            f.afficher()
+
     def statistiques_produits(self):
         if not self.commandes and not self.historique:
             print("Aucune commande pour les statistiques.")
@@ -119,11 +153,7 @@ class GestionStock:
 
         stats = {}
 
-        for cmd in self.commandes:
-            nom = cmd.produit.nom_prod
-            stats[nom] = stats.get(nom, 0) + cmd.quantite_cmd
-
-        for cmd in self.historique:
+        for cmd in self.commandes + self.historique:
             nom = cmd.produit.nom_prod
             stats[nom] = stats.get(nom, 0) + cmd.quantite_cmd
 
@@ -133,7 +163,7 @@ class GestionStock:
 
 
 # ==============================================================
-# Menu principal (DOIT ÊTRE AVANT LE MAIN)
+# Menu principal
 # ==============================================================
 
 def afficher_menu():
@@ -144,11 +174,12 @@ def afficher_menu():
     print("4. Supprimer une commande")
     print("5. Afficher historique")
     print("6. Statistiques")
-    print("7. Quitter")
+    print("7. Afficher factures")
+    print("8. Quitter")
 
 
 # ==============================================================
-# PROGRAMME PRINCIPAL
+# PROGRAMME PRINCIPAL (CONSOLE)
 # ==============================================================
 
 if __name__ == "__main__":
@@ -191,6 +222,9 @@ if __name__ == "__main__":
             gs.statistiques_produits()
 
         elif choix == "7":
+            gs.afficher_factures()
+
+        elif choix == "8":
             print("Au revoir 👋")
             break
 

@@ -1,21 +1,63 @@
 import streamlit as st
 from gestion_stock import Produit, Commande, GestionStock
 
-# Configuration page
+# ============================================================
+# CONFIGURATION DE LA PAGE
+# ============================================================
+
 st.set_page_config(
     page_title="Gestion de Stock",
     page_icon="📦",
     layout="centered"
 )
 
-# Initialisation du stock (persistant pendant la session)
+# ============================================================
+# STYLE (DESIGN)
+# ============================================================
+
+st.markdown("""
+<style>
+body {
+    background-color: #f8fafc;
+}
+.card {
+    background-color: white;
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
+    margin-bottom: 15px;
+}
+.title {
+    font-weight: bold;
+    font-size: 18px;
+}
+.total {
+    color: #2563EB;
+    font-size: 20px;
+    font-weight: bold;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# INITIALISATION DU STOCK (SESSION)
+# ============================================================
+
 if "gs" not in st.session_state:
     st.session_state.gs = GestionStock()
 
 gs = st.session_state.gs
 
+# ============================================================
+# TITRE
+# ============================================================
+
 st.title("📦 Application de Gestion de Stock")
-st.markdown("Interface web pour la gestion des produits et commandes")
+st.markdown("Interface web pour la gestion des produits, commandes, factures et statistiques")
+
+# ============================================================
+# MENU
+# ============================================================
 
 menu = st.sidebar.radio(
     "Menu",
@@ -24,75 +66,139 @@ menu = st.sidebar.radio(
         "📋 Afficher produits",
         "🛒 Ajouter commande",
         "📜 Historique",
+        "🧾 Factures",
         "📊 Statistiques"
     ]
 )
 
-# =========================
-# Ajouter produit
-# =========================
-if menu == "➕ Ajouter produit":
-    st.subheader("Ajouter un produit")
+# ============================================================
+# AJOUT PRODUIT
+# ============================================================
 
-    code = st.number_input("Code produit", step=1)
-    nom = st.text_input("Nom du produit")
+if menu == "➕ Ajouter produit":
+    st.subheader("➕ Ajouter un produit")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        code = st.number_input("Code produit", step=1)
+        nom = st.text_input("Nom du produit")
+    with col2:
+        qte = st.number_input("Quantité", step=1)
+        prix = st.number_input("Prix unitaire (DT)", step=0.1)
+
     desc = st.text_area("Description")
-    qte = st.number_input("Quantité", step=1)
-    prix = st.number_input("Prix unitaire (DT)", step=0.1)
 
     if st.button("Ajouter le produit"):
         p = Produit(int(code), nom, desc, int(qte), float(prix))
         gs.ajouter_produit(p)
-        st.success("Produit ajouté avec succès")
+        st.success("✅ Produit ajouté avec succès")
 
-# =========================
-# Afficher produits
-# =========================
+# ============================================================
+# AFFICHER PRODUITS
+# ============================================================
+
 elif menu == "📋 Afficher produits":
-    st.subheader("Liste des produits")
+    st.subheader("📦 Stock des produits")
 
     if not gs.produits:
         st.info("Aucun produit en stock")
     else:
         for p in gs.produits:
-            st.write(f"**{p.nom_prod}** | Qté: {p.quantite} | Prix: {p.prix_unit} DT")
+            st.markdown(f"""
+            <div class="card">
+                <div class="title">{p.nom_prod}</div>
+                <p>{p.description}</p>
+                <b>Quantité :</b> {p.quantite}<br>
+                <b>Prix :</b> {p.prix_unit} DT
+            </div>
+            """, unsafe_allow_html=True)
 
-# =========================
-# Ajouter commande
-# =========================
+# ============================================================
+# AJOUT COMMANDE
+# ============================================================
+
 elif menu == "🛒 Ajouter commande":
-    st.subheader("Ajouter une commande")
+    st.subheader("🛒 Ajouter une commande")
 
-    code_cmd = st.number_input("Code commande", step=1)
-    code_prod = st.number_input("Code produit", step=1)
-    qte = st.number_input("Quantité commandée", step=1)
+    col1, col2 = st.columns(2)
+    with col1:
+        code_cmd = st.number_input("Code commande", step=1)
+        code_prod = st.number_input("Code produit", step=1)
+    with col2:
+        qte = st.number_input("Quantité commandée", step=1)
 
     if st.button("Valider la commande"):
         produit = next((p for p in gs.produits if p.code_prod == code_prod), None)
         if produit:
             cmd = Commande(int(code_cmd), produit, int(qte))
             gs.ajouter_commande(cmd)
-            st.success("Commande traitée")
+            if cmd.valide:
+                st.success("✅ Commande validée et facture créée")
+            else:
+                st.error("❌ Stock insuffisant")
         else:
-            st.error("Produit introuvable")
+            st.error("❌ Produit introuvable")
 
-# =========================
-# Historique
-# =========================
+# ============================================================
+# HISTORIQUE
+# ============================================================
+
 elif menu == "📜 Historique":
-    st.subheader("Historique des commandes")
+    st.subheader("📜 Historique des commandes")
 
-    if not gs.historique:
-        st.info("Historique vide")
+    if not gs.commandes and not gs.historique:
+        st.info("Aucune commande enregistrée")
     else:
-        for cmd in gs.historique:
-            st.write(f"{cmd.produit.nom_prod} - {cmd.quantite_cmd} unités")
+        st.markdown("### 🟢 Commandes actives")
+        for cmd in gs.commandes:
+            st.markdown(f"""
+            <div class="card">
+                <b>Produit :</b> {cmd.produit.nom_prod}<br>
+                <b>Quantité :</b> {cmd.quantite_cmd}<br>
+                <b>Total :</b> {cmd.calculer_total()} DT
+            </div>
+            """, unsafe_allow_html=True)
 
-# =========================
-# Statistiques
-# =========================
+        st.markdown("### 🔴 Commandes supprimées")
+        if not gs.historique:
+            st.write("Aucune commande supprimée")
+        else:
+            for cmd in gs.historique:
+                st.markdown(f"""
+                <div class="card">
+                    <b>Produit :</b> {cmd.produit.nom_prod}<br>
+                    <b>Quantité :</b> {cmd.quantite_cmd}<br>
+                    <b>Total :</b> {cmd.calculer_total()} DT
+                </div>
+                """, unsafe_allow_html=True)
+
+# ============================================================
+# FACTURES
+# ============================================================
+
+elif menu == "🧾 Factures":
+    st.subheader("🧾 Factures des commandes")
+
+    if not gs.factures:
+        st.info("Aucune facture disponible")
+    else:
+        for f in gs.factures:
+            st.markdown(f"""
+            <div class="card">
+                <div class="title">Commande n° {f.code_cmd}</div>
+                <b>Produit :</b> {f.nom_produit}<br>
+                <b>Quantité :</b> {f.quantite}<br>
+                <b>Prix unitaire :</b> {f.prix_unitaire} DT<br>
+                <div class="total">TOTAL : {f.total} DT</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+# ============================================================
+# STATISTIQUES
+# ============================================================
+
 elif menu == "📊 Statistiques":
-    st.subheader("Statistiques des ventes")
+    st.subheader("📊 Statistiques des ventes")
 
     stats = {}
     for cmd in gs.commandes + gs.historique:
@@ -101,5 +207,6 @@ elif menu == "📊 Statistiques":
 
     if stats:
         st.bar_chart(stats)
+        st.success("📈 Statistiques mises à jour")
     else:
         st.info("Aucune donnée disponible")
