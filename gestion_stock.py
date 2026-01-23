@@ -1,3 +1,8 @@
+from database import get_connection, creer_tables
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+import os
+
 # ==============================================================
 # Classe Produit
 # ==============================================================
@@ -9,19 +14,6 @@ class Produit:
         self.description = description
         self.quantite = quantite
         self.prix_unit = prix_unit
-
-    def afficher(self):
-        print(f"Code : {self.code_prod}")
-        print(f"Nom : {self.nom_prod}")
-        print(f"Description : {self.description}")
-        print(f"Quantité : {self.quantite}")
-        print(f"Prix unitaire : {self.prix_unit} DT")
-
-    def modifier(self, nom, description, quantite, prix):
-        self.nom_prod = nom
-        self.description = description
-        self.quantite = quantite
-        self.prix_unit = prix
 
     def retirer_stock(self, quantite):
         if quantite <= self.quantite:
@@ -41,23 +33,12 @@ class Commande:
         self.quantite_cmd = quantite_cmd
         self.valide = self.produit.retirer_stock(quantite_cmd)
 
-    def afficher(self):
-        print(f"Code commande : {self.code_cmd}")
-        print(f"Produit : {self.produit.nom_prod}")
-        print(f"Quantité commandée : {self.quantite_cmd}")
-
-        if self.valide:
-            print("Commande valide")
-            print(f"Prix total : {self.calculer_total()} DT")
-        else:
-            print("Commande refusée : stock insuffisant")
-
     def calculer_total(self):
         return self.quantite_cmd * self.produit.prix_unit
 
 
 # ==============================================================
-# Classe Facture (NOUVELLE)
+# Classe Facture
 # ==============================================================
 
 class Facture:
@@ -68,165 +49,124 @@ class Facture:
         self.prix_unitaire = commande.produit.prix_unit
         self.total = commande.calculer_total()
 
-    def afficher(self):
-        print("===== FACTURE =====")
-        print(f"Commande : {self.code_cmd}")
-        print(f"Produit : {self.nom_produit}")
-        print(f"Quantité : {self.quantite}")
-        print(f"Prix unitaire : {self.prix_unitaire} DT")
-        print(f"TOTAL : {self.total} DT")
-
 
 # ==============================================================
-# Classe GestionStock
+# Classe GestionStock (AVEC SQLITE)
 # ==============================================================
 
 class GestionStock:
     def __init__(self):
+        creer_tables()
         self.produits = []
         self.commandes = []
         self.historique = []
-        self.factures = []   # 🔥 liste des factures
+        self.factures = []
+        self.charger_produits()
+
+    # ----------------------------
+    # PRODUITS
+    # ----------------------------
+
+    def charger_produits(self):
+        self.produits.clear()
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM produits")
+        rows = cur.fetchall()
+        conn.close()
+
+        for code, nom, desc, qte, prix in rows:
+            self.produits.append(Produit(code, nom, desc, qte, prix))
 
     def ajouter_produit(self, produit):
-        for p in self.produits:
-            if p.code_prod == produit.code_prod:
-                print("❌ Produit déjà existant.")
-                return False
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT code FROM produits WHERE code = ?", (produit.code_prod,))
+        if cur.fetchone():
+            conn.close()
+            return False
+
+        cur.execute(
+            "INSERT INTO produits VALUES (?, ?, ?, ?, ?)",
+            (produit.code_prod, produit.nom_prod, produit.description,
+             produit.quantite, produit.prix_unit)
+        )
+
+        conn.commit()
+        conn.close()
+
         self.produits.append(produit)
-        print("✅ Produit ajouté.")
         return True
 
-    def afficher_produits(self):
-        if not self.produits:
-            print("Aucun produit en stock.")
-            return
+    def mettre_a_jour_stock(self, produit):
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE produits SET quantite = ? WHERE code = ?",
+            (produit.quantite, produit.code_prod)
+        )
+        conn.commit()
+        conn.close()
 
-        produits_tries = sorted(self.produits, key=lambda p: p.nom_prod.lower())
-        for p in produits_tries:
-            print("-----------------")
-            p.afficher()
+    # ----------------------------
+    # COMMANDES
+    # ----------------------------
 
     def ajouter_commande(self, commande):
         if commande.valide:
             self.commandes.append(commande)
+            self.mettre_a_jour_stock(commande.produit)
             facture = Facture(commande)
             self.factures.append(facture)
-            print("✅ Commande enregistrée et facture créée.")
-        else:
-            print("❌ Commande non enregistrée (stock insuffisant).")
-
-    def supprimer_commande(self, code_cmd):
-        for i in range(len(self.commandes)):
-            if self.commandes[i].code_cmd == code_cmd:
-                cmd = self.commandes.pop(i)
-                self.historique.append(cmd)
-                print("✅ Commande supprimée et ajoutée à l'historique.")
-                return True
-        print("❌ Commande introuvable.")
+            return True
         return False
 
-    def afficher_historique(self):
-        if not self.historique:
-            print("Historique vide.")
-            return
+    def supprimer_commande(self, code_cmd):
+        for i, cmd in enumerate(self.commandes):
+            if cmd.code_cmd == code_cmd:
+                self.historique.append(self.commandes.pop(i))
+                return True
+        return False
 
-        print("=== HISTORIQUE DES COMMANDES ===")
-        for cmd in self.historique:
-            print("-----------------")
-            cmd.afficher()
-
-    def afficher_factures(self):
-        if not self.factures:
-            print("Aucune facture disponible.")
-            return
-
-        print("=== LISTE DES FACTURES ===")
-        for f in self.factures:
-            print("-----------------")
-            f.afficher()
+    # ----------------------------
+    # STATISTIQUES
+    # ----------------------------
 
     def statistiques_produits(self):
-        if not self.commandes and not self.historique:
-            print("Aucune commande pour les statistiques.")
-            return
-
         stats = {}
-
         for cmd in self.commandes + self.historique:
             nom = cmd.produit.nom_prod
             stats[nom] = stats.get(nom, 0) + cmd.quantite_cmd
-
-        print("=== STATISTIQUES DES PRODUITS ===")
-        for produit, total in stats.items():
-            print(f"{produit} : {total} unités commandées")
+        return stats
 
 
 # ==============================================================
-# Menu principal
+# FACTURE PDF
 # ==============================================================
 
-def afficher_menu():
-    print("\n===== MENU GESTION DE STOCK =====")
-    print("1. Ajouter un produit")
-    print("2. Afficher les produits")
-    print("3. Ajouter une commande")
-    print("4. Supprimer une commande")
-    print("5. Afficher historique")
-    print("6. Statistiques")
-    print("7. Afficher factures")
-    print("8. Quitter")
+def generer_facture_pdf(facture, dossier="factures"):
+    if not os.path.exists(dossier):
+        os.makedirs(dossier)
 
+    nom_fichier = f"{dossier}/facture_{facture.code_cmd}.pdf"
+    c = canvas.Canvas(nom_fichier, pagesize=A4)
+    width, height = A4
 
-# ==============================================================
-# PROGRAMME PRINCIPAL (CONSOLE)
-# ==============================================================
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(50, height - 50, "FACTURE")
 
-if __name__ == "__main__":
-    gs = GestionStock()
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 110, f"Commande : {facture.code_cmd}")
+    c.drawString(50, height - 140, f"Produit : {facture.nom_produit}")
+    c.drawString(50, height - 170, f"Quantité : {facture.quantite}")
+    c.drawString(50, height - 200, f"Prix unitaire : {facture.prix_unitaire} DT")
 
-    while True:
-        afficher_menu()
-        choix = input("Votre choix : ")
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, height - 250, f"TOTAL : {facture.total} DT")
 
-        if choix == "1":
-            code = int(input("Code produit : "))
-            nom = input("Nom : ")
-            desc = input("Description : ")
-            qte = int(input("Quantité : "))
-            prix = float(input("Prix unitaire : "))
-            gs.ajouter_produit(Produit(code, nom, desc, qte, prix))
+    c.setFont("Helvetica-Oblique", 10)
+    c.drawString(50, 40, "Application de Gestion de Stock - Python / SQLite")
 
-        elif choix == "2":
-            gs.afficher_produits()
-
-        elif choix == "3":
-            code_cmd = int(input("Code commande : "))
-            code_prod = int(input("Code produit : "))
-            qte = int(input("Quantité commandée : "))
-
-            produit = next((p for p in gs.produits if p.code_prod == code_prod), None)
-            if produit:
-                gs.ajouter_commande(Commande(code_cmd, produit, qte))
-            else:
-                print("❌ Produit introuvable.")
-
-        elif choix == "4":
-            code = int(input("Code commande à supprimer : "))
-            gs.supprimer_commande(code)
-
-        elif choix == "5":
-            gs.afficher_historique()
-
-        elif choix == "6":
-            gs.statistiques_produits()
-
-        elif choix == "7":
-            gs.afficher_factures()
-
-        elif choix == "8":
-            print("Au revoir 👋")
-            break
-
-        else:
-            print("Choix invalide.")
+    c.save()
+    return nom_fichier

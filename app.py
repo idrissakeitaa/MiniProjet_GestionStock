@@ -1,5 +1,7 @@
 import streamlit as st
 from gestion_stock import Produit, Commande, GestionStock
+from gestion_stock import generer_facture_pdf
+
 
 # ============================================================
 # CONFIGURATION DE LA PAGE
@@ -183,15 +185,30 @@ elif menu == "🧾 Factures":
         st.info("Aucune facture disponible")
     else:
         for f in gs.factures:
-            st.markdown(f"""
-            <div class="card">
-                <div class="title">Commande n° {f.code_cmd}</div>
-                <b>Produit :</b> {f.nom_produit}<br>
-                <b>Quantité :</b> {f.quantite}<br>
-                <b>Prix unitaire :</b> {f.prix_unitaire} DT<br>
-                <div class="total">TOTAL : {f.total} DT</div>
-            </div>
-            """, unsafe_allow_html=True)
+            col1, col2 = st.columns([3, 1])
+
+            with col1:
+                st.markdown(f"""
+                <div class="card">
+                    <div class="title">Commande n° {f.code_cmd}</div>
+                    <b>Produit :</b> {f.nom_produit}<br>
+                    <b>Quantité :</b> {f.quantite}<br>
+                    <b>Prix unitaire :</b> {f.prix_unitaire} DT<br>
+                    <div class="total">TOTAL : {f.total} DT</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                if st.button(f"📄 PDF {f.code_cmd}"):
+                    chemin = generer_facture_pdf(f)
+                    with open(chemin, "rb") as file:
+                        st.download_button(
+                            label="⬇ Télécharger",
+                            data=file,
+                            file_name=f"facture_{f.code_cmd}.pdf",
+                            mime="application/pdf"
+                        )
+
 
 # ============================================================
 # STATISTIQUES
